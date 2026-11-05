@@ -1,0 +1,25 @@
+# FHEM-Startkonfiguration fuer das OpenCCU-Add-on
+#
+# Hinweis: Das in der Standard-fhem.cfg uebliche "usb create" (initialUsbCheck)
+# ist hier bewusst NICHT enthalten - es wuerde serielle Schnittstellen abfragen
+# und kann das Funkmodul der CCU (RPI-RF-MOD / HM-MOD-RPI-PCB) stoeren.
+
+attr global logfile ./log/fhem-%Y-%m.log
+attr global modpath .
+attr global motd none
+attr global pidfilename ./log/fhem.pid
+attr global statefile ./log/fhem.save
+attr global updateInBackground 1
+attr global verbose 3
+
+# Weboberflaeche: http://<CCU-IP>:8083/fhem
+define WEB FHEMWEB 8083 global
+attr WEB editConfig 1
+
+# Telnet nur lokal (fuer /usr/local/addons/fhem/bin/fhemcmd)
+define telnetPort telnet 7072
+
+define Logfile FileLog ./log/fhem-%Y-%m.log fakelog
+define autocreate autocreate
+attr autocreate filelog ./log/%NAME-%Y.log
+define eventTypes eventTypes ./log/eventTypes.txt

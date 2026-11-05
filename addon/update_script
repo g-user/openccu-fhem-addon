@@ -1,0 +1,101 @@
+#!/bin/sh
+# -----------------------------------------------------------------------------
+# OpenCCU-Add-on "FHEM" - Installations-/Update-Skript
+# Wird von OpenCCU beim Installieren der Zusatzsoftware aufgerufen
+# (Parameter: Plattform, z.B. "HM-RASPBERRYMATIC"). Benoetigt keinen Internetzugang.
+# -----------------------------------------------------------------------------
+
+ADDON_NAME=fhem
+ADDON_DIR=/usr/local/addons/$ADDON_NAME
+RCD_DIR=/usr/local/etc/config/rc.d
+WWW_DIR=/usr/local/etc/config/addons/www/$ADDON_NAME
+SRC=$(cd "$(dirname "$0")" && pwd)
+PAYLOAD=$SRC/fhem-addon
+LOGFILE=/usr/local/addons/fhem-install.log
+
+log() {
+  echo "[fhem-addon] $*"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >>"$LOGFILE" 2>/dev/null
+  logger -t fhem-addon "$*" 2>/dev/null
+}
+die() { log "FEHLER: $1"; exit "${2:-1}"; }
+
+case "$1" in
+  CCU1|CCU2) echo "Plattform $1 wird nicht unterstuetzt."; exit 13 ;;
+esac
+
+# /usr/local muss beschreibbar eingehaengt sein
+mount | grep -q ' /usr/local ' || mount /usr/local 2>/dev/null
+mkdir -p /usr/local/addons || exit 1
+
+log "Installiere FHEM-Add-on $(cat "$PAYLOAD/VERSION" 2>/dev/null) (Plattform: ${1:-?})"
+
+# --- Architektur pruefen ------------------------------------------------------
+WANT=$(cat "$PAYLOAD/ARCH" 2>/dev/null)
+HAVE=$(uname -m)
+[ -n "$WANT" ] || die "Add-on-Archiv ist unvollstaendig (ARCH fehlt)."
+[ "$WANT" = "$HAVE" ] || die "Falsche Architektur: Add-on ist fuer $WANT, dieses System ist $HAVE." 13
+
+# --- Speicherplatz pruefen ----------------------------------------------------
+NEED=$(du -sk "$PAYLOAD/perl" | awk '{print $1}')
+if [ ! -f "$ADDON_DIR/fhem/fhem.pl" ]; then
+  NEED=$((NEED + $(du -sk "$PAYLOAD/fhem-dist" | awk '{print $1}')))
+fi
+NEED=$((NEED + 20480))
+FREE=$(df -k /usr/local | tail -1 | awk '{print $(NF-2)}')
+[ "$FREE" -gt "$NEED" ] 2>/dev/null || die "Zu wenig Speicher auf /usr/local: frei ${FREE} KB, benoetigt ${NEED} KB."
+
+# --- laufendes FHEM stoppen ---------------------------------------------------
+[ -x "$RCD_DIR/$ADDON_NAME" ] && "$RCD_DIR/$ADDON_NAME" stop
+
+mkdir -p "$ADDON_DIR"
+
+# --- Perl-Laufzeit (wird bei jedem Update komplett ersetzt) -------------------
+rm -rf "$ADDON_DIR/perl.old"
+[ -d "$ADDON_DIR/perl" ] && mv "$ADDON_DIR/perl" "$ADDON_DIR/perl.old"
+
+rollback_perl() {
+  rm -rf "$ADDON_DIR/perl"
+  [ -d "$ADDON_DIR/perl.old" ] && mv "$ADDON_DIR/perl.old" "$ADDON_DIR/perl"
+}
+
+if ! cp -a "$PAYLOAD/perl" "$ADDON_DIR/perl"; then
+  rollback_perl; die "Kopieren der Perl-Laufzeit fehlgeschlagen."
+fi
+
+log "Teste Perl-Laufzeit ..."
+if ! "$ADDON_DIR/perl/bin/perl" -MXML::Parser -MRPC::XML -MRPC::XML::Server -MNet::SSLeay \
+      -MIO::Socket::SSL -MDevice::SerialPort -MJSON \
+      -e 'printf "Perl %vd OK, %s\n", $^V, Net::SSLeay::SSLeay_version(0)' >>"$LOGFILE" 2>&1; then
+  rollback_perl
+  die "Die Perl-Laufzeit laeuft auf diesem System nicht (Details: $LOGFILE). Passt die glibc? $(grep Benoetigt "$PAYLOAD/BUILDINFO" 2>/dev/null)"
+fi
+rm -rf "$ADDON_DIR/perl.old"
+
+# --- FHEM: nur bei Erstinstallation kopieren ----------------------------------
+# Ein bereits installiertes FHEM bleibt unangetastet (Konfiguration, Logs und
+# per FHEM-"update" aktualisierte Module bleiben erhalten).
+if [ -f "$ADDON_DIR/fhem/fhem.pl" ]; then
+  log "Bestehende FHEM-Installation in $ADDON_DIR/fhem bleibt erhalten."
+else
+  log "Installiere FHEM nach $ADDON_DIR/fhem ..."
+  cp -a "$PAYLOAD/fhem-dist" "$ADDON_DIR/fhem" || die "Kopieren von FHEM fehlgeschlagen."
+  [ -f "$ADDON_DIR/fhem/fhem.cfg" ] || cp "$PAYLOAD/etc/fhem.cfg.default" "$ADDON_DIR/fhem/fhem.cfg"
+  mkdir -p "$ADDON_DIR/fhem/log"
+fi
+
+# --- Hilfsskripte, Startskript, Web-Seite -------------------------------------
+rm -rf "$ADDON_DIR/bin" "$ADDON_DIR/etc"
+cp -a "$PAYLOAD/bin" "$PAYLOAD/etc" "$ADDON_DIR/" || die "Kopieren der Hilfsskripte fehlgeschlagen."
+cp "$PAYLOAD/VERSION" "$PAYLOAD/ARCH" "$PAYLOAD/BUILDINFO" "$ADDON_DIR/"
+chmod 755 "$ADDON_DIR"/bin/*
+
+mkdir -p "$RCD_DIR"
+cp "$PAYLOAD/rc.d/$ADDON_NAME" "$RCD_DIR/$ADDON_NAME" && chmod 755 "$RCD_DIR/$ADDON_NAME"
+
+mkdir -p "$WWW_DIR"
+cp -a "$PAYLOAD/www/." "$WWW_DIR/"
+
+sync
+log "Installation abgeschlossen. FHEM startet nach dem Neustart der CCU (Port 8083)."
+exit 0

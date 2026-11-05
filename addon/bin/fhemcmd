@@ -1,0 +1,7 @@
+#!/bin/sh
+# Sendet einen Befehl an das laufende FHEM (ueber den lokalen telnet-Port 7072).
+# Beispiel:  /usr/local/addons/fhem/bin/fhemcmd "list TYPE=HMCCU"
+. /usr/local/addons/fhem/bin/fhem-env.sh
+[ $# -gt 0 ] || { echo "Aufruf: $0 \"<FHEM-Befehl>\""; exit 1; }
+cd "$FHEM_HOME" || exit 1
+exec "$FHEM_PERL" fhem.pl localhost:7072 "$*"

@@ -1,0 +1,24 @@
+name: Build FHEM OpenCCU add-on
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04-arm   # aarch64: Raspberry Pi 3/4/5, ODROID
+          - runner: ubuntu-24.04       # x86_64: OpenCCU als VM
+    runs-on: ${{ matrix.runner }}
+    container: debian:bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: SRC_DIR="$PWD" bash scripts/build-inside.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fhem-openccu-addon-${{ matrix.runner }}
+          path: dist/*

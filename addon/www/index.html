@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FHEM</title>
+<style>
+  body { font-family: sans-serif; margin: 2em; background: #fff; color: #222; }
+  a { color: #0060a0; }
+</style>
+<script>
+  window.location.replace("http://" + window.location.hostname + ":8083/fhem");
+</script>
+</head>
+<body>
+<h1>FHEM</h1>
+<p>Weiterleitung zur FHEM-Weboberfl&auml;che &hellip;</p>
+<p>Falls nichts passiert:
+<a id="l" href="#">FHEM &ouml;ffnen (Port 8083)</a>.
+Ist der Port nicht erreichbar, in OpenCCU unter <i>Einstellungen &rarr; Systemsteuerung &rarr;
+Firewall konfigurieren</i> den Port&nbsp;8083 freigeben.</p>
+<script>
+  document.getElementById("l").href = "http://" + window.location.hostname + ":8083/fhem";
+</script>
+</body>
+</html>
